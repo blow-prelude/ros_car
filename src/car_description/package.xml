@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>car_description</name>
+  <version>0.0.0</version>
+  <description>URDF/Xacro model of the three-wheeled differential-drive car (meshes, sensors, Gazebo plugins)</description>
+  <maintainer email="b24051005@njupt.edu.cn">wtr</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>xacro</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <!-- gazebo_ros 的 GazeboRosPaths 据此把 <prefix>/.. (即 install/car_description/share)
+         追加到 GAZEBO_MODEL_PATH, 使 gzserver/gzclient 能解析 URDF 里的
+         model://car_description/meshes/*.stl; 缺失时 gzclient 场景加载会卡死 -->
+    <gazebo_ros gazebo_model_path="${prefix}/.."/>
+  </export>
+</package>

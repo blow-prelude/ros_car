@@ -1,0 +1,192 @@
+<?xml version="1.0"?>
+<!--
+  xuegecar 三轮差速小车 — 依据用户提供的 xuegecar URDF 描述重建（非照抄）
+  采纳其约定:
+    * base_link = 底盘包围盒中心, 离地 0.06205m
+    * 全部 STL 共用同一网格坐标系, 摆放恒等式 visual_origin = T - joint_origin,
+      T = (0.00225, 0, -0.00925), rpy(0,0,π/2) — 由宏按关节坐标自动求出, 不手写
+    * 命名: chassis_link / laser_frame / ultrasonic_link / camera_link / battery_link /
+      controller_link / tt_motor_link / imu_link; 配色与 2.0kg 底盘惯量沿用其描述
+    * base_footprint 为空 link (KDL 不接受根 link 惯量; 接触点会成为第 4 支撑点)
+  修正其描述中无法仿真的部分:
+    * 轮关节 y ±0.081 → ±0.064 (网格实测轮心, ±0.081 是轮外缘; 轮距必须 0.128)
+    * 补齐轮/万向轮碰撞与惯量 (原描述除底盘外无碰撞, 车会悬空 2.2cm)
+    * laser_frame 从网格包围盒中心 (z_m 73mm) 修正到真实扫描面 (z_m 90mm)
+  网格为毫米(scale 0.001); 网格系→ROS: x_ros=-y_m, y_ros=x_m, z_ros=z_m; 地面 z_m=-52.8mm
+-->
+<robot name="xuegecar" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ==================== 参数 ==================== -->
+  <xacro:property name="wheel_radius"     value="0.0325"/>
+  <xacro:property name="wheel_width"      value="0.034"/>
+  <xacro:property name="wheel_separation" value="0.128"/>
+  <xacro:property name="caster_radius"    value="0.0109"/>
+  <xacro:property name="ground_to_base"   value="0.06205"/>
+  <xacro:property name="half_pi" value="1.57079632679"/>
+  <!-- GUI 显示用减面网格: 软件渲染下高模会使 gzclient 卡死, 高模保留在 meshes/ 顶层 -->
+  <xacro:property name="mesh_dir" value="meshes/decimated"/>
+
+  <!-- 网格统一偏移 T, visual_origin = T - joint_origin -->
+  <xacro:property name="T_x" value="0.00225"/>
+  <xacro:property name="T_z" value="-0.00925"/>
+
+  <!-- ==================== 惯量宏 ==================== -->
+  <xacro:macro name="box_inertial" params="mass x y z *origin">
+    <inertial>
+      <xacro:insert_block name="origin"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass*(y*y+z*z)/12.0}" iyy="${mass*(x*x+z*z)/12.0}"
+               izz="${mass*(x*x+y*y)/12.0}" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="cylinder_y_inertial" params="mass r l *origin">
+    <inertial>
+      <xacro:insert_block name="origin"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass*(3*r*r+l*l)/12.0}" izz="${mass*(3*r*r+l*l)/12.0}"
+               iyy="${mass*r*r/2.0}" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="sphere_inertial" params="mass r *origin">
+    <inertial>
+      <xacro:insert_block name="origin"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${0.4*mass*r*r}" iyy="${0.4*mass*r*r}" izz="${0.4*mass*r*r}"
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- ==================== 材料 (沿用描述配色) ==================== -->
+  <material name="dark_gray">  <color rgba="0.08 0.08 0.08 1.0"/></material>
+  <material name="matte_black"><color rgba="0.01 0.01 0.01 1.0"/></material>
+  <material name="blue">       <color rgba="0.05 0.18 0.8 1.0"/></material>
+  <material name="silver">     <color rgba="0.65 0.68 0.70 1.0"/></material>
+
+  <!-- ==================== 纯视觉部件宏 (fixed link, 无碰撞/惯量, Gazebo 会并入 base_link) ==== -->
+  <xacro:macro name="visual_link" params="name jx jy jz mesh material">
+    <link name="${name}">
+      <visual>
+        <origin xyz="${T_x - jx} ${-jy} ${T_z - jz}" rpy="0 0 ${half_pi}"/>
+        <geometry>
+          <mesh filename="package://car_description/${mesh_dir}/${mesh}" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+    </link>
+    <joint name="${name}_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}"/>
+      <origin xyz="${jx} ${jy} ${jz}" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- ==================== base_footprint / base_link ==================== -->
+  <link name="base_footprint"/>
+
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${ground_to_base}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <mass value="2.0"/>
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.02" iyz="0.0" izz="0.02"/>
+    </inertial>
+    <!-- 两块碰撞盒近似: 主盒收窄到 0.09 避让驱动轮(内缘 y=0.047);
+         前段抬高到声呐波束之上(波束顶 z=0.02275), 否则超声波只读到自遮挡 -->
+    <collision>
+      <origin xyz="-0.0175 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.1095 0.09 0.0805"/></geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.05475 0 0.032" rpy="0 0 0"/>
+      <geometry><box size="0.035 0.09 0.0165"/></geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== 驱动轮 (real link: 视觉+碰撞+惯量, 差速插件驱动对象) ================ -->
+  <xacro:macro name="drive_wheel" params="name y_sign">
+    <link name="${name}_link">
+      <visual>
+        <origin xyz="${T_x + 0.05075} ${-y_sign*0.064} ${T_z + 0.02955}" rpy="0 0 ${half_pi}"/>
+        <geometry>
+          <mesh filename="package://car_description/${mesh_dir}/${name}.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="matte_black"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="${half_pi} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+      <xacro:cylinder_y_inertial mass="0.03" r="${wheel_radius}" l="${wheel_width}">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+      </xacro:cylinder_y_inertial>
+    </link>
+    <joint name="${name}_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${name}_link"/>
+      <origin xyz="-0.05075 ${y_sign*0.064} -0.02955" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit effort="1.2" velocity="20"/>
+      <!-- 阻尼过大会吃掉驱动扭矩 -->
+      <dynamics damping="0.01" friction="0.0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:drive_wheel name="wheel_left"  y_sign="1"/>
+  <xacro:drive_wheel name="wheel_right" y_sign="-1"/>
+
+  <!-- ==================== 前万向轮 (无摩擦球模拟, 三轮差速可转向的关键) ==================== -->
+  <link name="caster_link">
+    <visual>
+      <origin xyz="${T_x - 0.0652} 0 ${T_z + 0.05115}" rpy="0 0 ${half_pi}"/>
+      <geometry>
+        <mesh filename="package://car_description/${mesh_dir}/caster_wheel.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="matte_black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><sphere radius="${caster_radius}"/></geometry>
+    </collision>
+    <xacro:sphere_inertial mass="0.02" r="${caster_radius}">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:sphere_inertial>
+  </link>
+  <joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_link"/>
+    <origin xyz="0.0652 0 -0.05115" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== 纯视觉部件 (坐标沿用描述) ==================== -->
+  <xacro:visual_link name="chassis_link"    jx="0"        jy="0"         jz="0"        mesh="chassis.stl"    material="blue"/>
+  <xacro:visual_link name="battery_link"    jx="-0.02475" jy="0"         jz="0.00525"  mesh="battery.stl"    material="dark_gray"/>
+  <xacro:visual_link name="controller_link" jx="-0.02475" jy="-0.000108" jz="0.018005" mesh="controller.stl" material="silver"/>
+  <xacro:visual_link name="tt_motor_link"   jx="-0.026904" jy="0"        jz="-0.02955" mesh="tt_motor.stl"   material="dark_gray"/>
+  <!-- laser_frame 在真实扫描面 (装配系 z_m=90mm), 非网格包围盒中心 -->
+  <xacro:visual_link name="laser_frame"     jx="-0.0227"  jy="0.000062"  jz="0.08075"  mesh="lidar.stl"      material="matte_black"/>
+  <xacro:visual_link name="camera_link"     jx="0.047716" jy="-0.000603" jz="0.052408" mesh="camera.stl"     material="matte_black"/>
+  <xacro:visual_link name="ultrasonic_link" jx="0.042651" jy="0"         jz="0.01225"  mesh="ultrasonic.stl" material="silver"/>
+
+  <!-- ==================== IMU (坐标系) ==================== -->
+  <link name="imu_link">
+    <xacro:box_inertial mass="0.001" x="0.02" y="0.02" z="0.005">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:box_inertial>
+  </link>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== Gazebo 插件与传感器 ==================== -->
+  <xacro:include filename="$(find car_description)/urdf/car.gazebo.xacro"/>
+
+</robot>

@@ -1,0 +1,226 @@
+<?xml version="1.0"?>
+<!-- 简单家庭场景: 8m x 6m 两室一厅 (左客厅 / 右上卧室 / 右下厨房)
+     所有家具均为静态模型, 带碰撞体, 雷达(/scan)可见。
+     门洞宽 0.8m(客厅门) 与 0.8m(卧室门), 小车(0.16m)可通行。 -->
+<sdf version="1.6">
+  <world name="home">
+
+    <include><uri>model://ground_plane</uri></include>
+    <include><uri>model://sun</uri></include>
+
+    <physics type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_update_rate>1000</real_time_update_rate>
+      <ode><solver><iterations>200</iterations></solver></ode>
+    </physics>
+
+    <!-- 软件渲染环境下关闭阴影, 大幅降低 gzclient 渲染开销 -->
+    <scene>
+      <shadows>false</shadows>
+      <ambient>0.6 0.6 0.6 1</ambient>
+      <background>245 245 245 1</background>
+    </scene>
+
+    <!-- ================= 外墙 ================= -->
+    <model name="wall_north">
+      <static>true</static><pose>0 3 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>8.2 0.1 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>8.2 0.1 1.0</size></box></geometry>
+          <material><ambient>0.85 0.83 0.80 1</ambient><diffuse>0.85 0.83 0.80 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_south">
+      <static>true</static><pose>0 -3 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>8.2 0.1 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>8.2 0.1 1.0</size></box></geometry>
+          <material><ambient>0.85 0.83 0.80 1</ambient><diffuse>0.85 0.83 0.80 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_west">
+      <static>true</static><pose>-4 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.1 6.0 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.1 6.0 1.0</size></box></geometry>
+          <material><ambient>0.85 0.83 0.80 1</ambient><diffuse>0.85 0.83 0.80 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_east">
+      <static>true</static><pose>4 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.1 6.0 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.1 6.0 1.0</size></box></geometry>
+          <material><ambient>0.85 0.83 0.80 1</ambient><diffuse>0.85 0.83 0.80 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ================= 内墙: 客厅/厨卧隔墙, 门洞 y in [-0.4, 0.4] ================= -->
+    <model name="wall_mid_upper">
+      <static>true</static><pose>1 1.7 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.1 2.6 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.1 2.6 1.0</size></box></geometry>
+          <material><ambient>0.90 0.88 0.85 1</ambient><diffuse>0.90 0.88 0.85 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_mid_lower">
+      <static>true</static><pose>1 -1.7 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.1 2.6 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.1 2.6 1.0</size></box></geometry>
+          <material><ambient>0.90 0.88 0.85 1</ambient><diffuse>0.90 0.88 0.85 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ================= 内墙: 卧室/厨房隔墙, 门洞 x in [2.4, 3.2] ================= -->
+    <model name="wall_bed_left">
+      <static>true</static><pose>1.7 1 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.4 0.1 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.4 0.1 1.0</size></box></geometry>
+          <material><ambient>0.90 0.88 0.85 1</ambient><diffuse>0.90 0.88 0.85 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_bed_right">
+      <static>true</static><pose>3.6 1 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.8 0.1 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.8 0.1 1.0</size></box></geometry>
+          <material><ambient>0.90 0.88 0.85 1</ambient><diffuse>0.90 0.88 0.85 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ================= 客厅家具 ================= -->
+    <model name="sofa">  <!-- 沙发, 靠西墙 -->
+      <static>true</static><pose>-3.4 0 0.3 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.8 1.8 0.6</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.8 1.8 0.6</size></box></geometry>
+          <material><ambient>0.36 0.22 0.12 1</ambient><diffuse>0.36 0.22 0.12 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="coffee_table">  <!-- 茶几 -->
+      <static>true</static><pose>-2.3 0 0.225 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.9 0.6 0.45</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.9 0.6 0.45</size></box></geometry>
+          <material><ambient>0.65 0.45 0.25 1</ambient><diffuse>0.65 0.45 0.25 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="tv_stand">  <!-- 电视柜, 靠隔墙 -->
+      <static>true</static><pose>0.7 -1.8 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.45 1.6 0.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.45 1.6 0.5</size></box></geometry>
+          <material><ambient>0.20 0.20 0.22 1</ambient><diffuse>0.20 0.20 0.22 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="bookshelf">  <!-- 书架, 西北角 -->
+      <static>true</static><pose>-3.75 2.1 0.9 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.45 1.6 1.8</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.45 1.6 1.8</size></box></geometry>
+          <material><ambient>0.55 0.38 0.20 1</ambient><diffuse>0.55 0.38 0.20 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="plant_living">  <!-- 绿植 -->
+      <static>true</static><pose>-3.7 -2.6 0.6 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><cylinder><radius>0.16</radius><length>1.2</length></cylinder></geometry></collision>
+        <visual name="vis"><geometry><cylinder><radius>0.16</radius><length>1.2</length></cylinder></geometry>
+          <material><ambient>0.15 0.50 0.20 1</ambient><diffuse>0.15 0.50 0.20 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ================= 卧室家具 ================= -->
+    <model name="bed">  <!-- 床 -->
+      <static>true</static><pose>2.5 2.15 0.225 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>2.0 1.5 0.45</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>2.0 1.5 0.45</size></box></geometry>
+          <material><ambient>0.85 0.86 0.90 1</ambient><diffuse>0.85 0.86 0.90 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="nightstand">  <!-- 床头柜 -->
+      <static>true</static><pose>3.7 1.6 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.45 0.45 0.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.45 0.45 0.5</size></box></geometry>
+          <material><ambient>0.55 0.38 0.20 1</ambient><diffuse>0.55 0.38 0.20 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ================= 厨房家具 ================= -->
+    <model name="counter_east">  <!-- 橱柜(东墙) -->
+      <static>true</static><pose>3.65 -0.9 0.45 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6 3.0 0.9</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6 3.0 0.9</size></box></geometry>
+          <material><ambient>0.88 0.88 0.86 1</ambient><diffuse>0.88 0.88 0.86 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="counter_south">  <!-- 橱柜(南墙) -->
+      <static>true</static><pose>2.9 -2.65 0.45 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.2 0.6 0.9</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.2 0.6 0.9</size></box></geometry>
+          <material><ambient>0.88 0.88 0.86 1</ambient><diffuse>0.88 0.88 0.86 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="fridge">  <!-- 冰箱 -->
+      <static>true</static><pose>1.6 -2.65 0.9 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.7 0.65 1.8</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.7 0.65 1.8</size></box></geometry>
+          <material><ambient>0.92 0.92 0.94 1</ambient><diffuse>0.92 0.92 0.94 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="dining_table">  <!-- 餐桌 -->
+      <static>true</static><pose>2.4 0.1 0.375 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><cylinder><radius>0.45</radius><length>0.75</length></cylinder></geometry></collision>
+        <visual name="vis"><geometry><cylinder><radius>0.45</radius><length>0.75</length></cylinder></geometry>
+          <material><ambient>0.65 0.45 0.25 1</ambient><diffuse>0.65 0.45 0.25 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="chair_1">
+      <static>true</static><pose>1.9 0.7 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.42 0.42 0.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.42 0.42 0.5</size></box></geometry>
+          <material><ambient>0.50 0.35 0.18 1</ambient><diffuse>0.50 0.35 0.18 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="chair_2">
+      <static>true</static><pose>2.4 -0.7 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.42 0.42 0.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.42 0.42 0.5</size></box></geometry>
+          <material><ambient>0.50 0.35 0.18 1</ambient><diffuse>0.50 0.35 0.18 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>

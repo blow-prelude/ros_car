@@ -1,0 +1,217 @@
+<?xml version="1.0"?>
+<!-- Gazebo Classic 仿真配置: 差速驱动插件 + 传感器插件 + 接触摩擦参数 -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- 摄像头传感器默认关闭: WSL/部分环境的 GPU 离屏渲染会导致 gzserver 崩溃。
+       需要时用 xacro car.urdf.xacro with_camera:=true 开启。 -->
+  <xacro:arg name="with_camera" default="false"/>
+
+  <!-- ==================== 摩擦与接触 ==================== -->
+  <!-- 驱动轮: 高摩擦提供牵引力; 不显式设置 kp/kd, 使用默认接触参数
+       (自调 kp/kd 会与差速插件速度伺服耦合产生锁轮极限环, 表现为静止爬行) -->
+  <gazebo reference="wheel_left_link">
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+    <material>Gazebo/DarkGrey</material>
+  </gazebo>
+  <gazebo reference="wheel_right_link">
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+    <material>Gazebo/DarkGrey</material>
+  </gazebo>
+
+  <!-- 万向轮: 近零摩擦, 不阻碍差速转向 -->
+  <gazebo reference="caster_link">
+    <mu1>0.0</mu1>
+    <mu2>0.0</mu2>
+    <material>Gazebo/Silver</material>
+  </gazebo>
+
+  <gazebo reference="chassis_link">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+  <gazebo reference="laser_frame">
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo reference="ultrasonic_link">
+    <material>Gazebo/Silver</material>
+  </gazebo>
+  <gazebo reference="battery_link">
+    <material>Gazebo/Grey</material>
+  </gazebo>
+  <gazebo reference="controller_link">
+    <material>Gazebo/Grey</material>
+  </gazebo>
+  <gazebo reference="tt_motor_link">
+    <material>Gazebo/Grey</material>
+  </gazebo>
+  <gazebo reference="camera_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+  <!-- ==================== 差速驱动 ====================
+       在仿真中扮演实物上 ESP32-S3 + 电机驱动 + 编码器的角色:
+       订阅 /cmd_vel, 积分轮速发布 /odom 与 odom->base_footprint TF -->
+  <gazebo>
+    <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <ros>
+        <namespace>/</namespace>
+        <remapping>cmd_vel:=cmd_vel</remapping>
+        <remapping>odom:=odom</remapping>
+      </ros>
+      <update_rate>50</update_rate>
+      <left_joint>wheel_left_joint</left_joint>
+      <right_joint>wheel_right_joint</right_joint>
+      <wheel_separation>${wheel_separation}</wheel_separation>
+      <wheel_diameter>${2*wheel_radius}</wheel_diameter>
+      <max_wheel_torque>1.0</max_wheel_torque>
+      <!-- 注意: 此插件无 cmd_vel_timeout; 指令停止后目标速度保持,
+           上层(teleop/导航)必须持续发布 cmd_vel 并以 0 速停车 -->
+      <!-- odometry_source: 0=编码器积分(与实物 ESP32 轮式里程计一致),
+           1=仿真世界真值(默认, 会把车体俯仰横滚带进 TF, 不要用) -->
+      <odometry_source>0</odometry_source>
+      <max_wheel_acceleration>3.0</max_wheel_acceleration>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>true</publish_odom_tf>
+      <publish_wheel_tf>true</publish_wheel_tf>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <covariance_x>0.0001</covariance_x>
+      <covariance_y>0.0001</covariance_y>
+      <covariance_yaw>0.001</covariance_yaw>
+    </plugin>
+  </gazebo>
+
+  <!-- ==================== 2D 激光雷达 (对标 RPLIDAR A1 / LDROBOT D300) ==================== -->
+  <gazebo reference="laser_frame">
+    <sensor name="lidar" type="ray">
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>10</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-${pi}</min_angle>
+            <max_angle>${pi}</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.10</min>
+          <max>12.0</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </ray>
+      <plugin name="lidar_plugin" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <remapping>~/out:=scan</remapping>
+        </ros>
+        <output_type>sensor_msgs/LaserScan</output_type>
+        <frame_name>laser_frame</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- ==================== IMU (对标 MPU6050 级) ==================== -->
+  <gazebo reference="imu_link">
+    <gravity>true</gravity>
+    <sensor name="imu" type="imu">
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>200</update_rate>
+      <!-- Gazebo Classic 的 IMU 只支持单一 noise 块; 逐轴 <x><noise> 写法会被错误解析
+           (实测产生恒定 ~0.22 rad/s 的 y 轴角速度伪影) -->
+      <imu>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.0002</stddev>
+          <bias_mean>0.0</bias_mean>
+          <bias_stddev>0.00002</bias_stddev>
+        </noise>
+      </imu>
+      <plugin name="imu_plugin" filename="libgazebo_ros_imu_sensor.so">
+        <ros>
+          <namespace>/</namespace>
+          <remapping>~/out:=imu/data</remapping>
+        </ros>
+        <frame_name>imu_link</frame_name>
+        <initial_orientation_as_reference>false</initial_orientation_as_reference>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- ==================== 超声波测距 (对标 HC-SR04, sensor_msgs/Range) ==================== -->
+  <gazebo reference="ultrasonic_link">
+    <sensor name="ultrasound" type="ray">
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>10</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>5</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.1309</min_angle>
+            <max_angle>0.1309</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.02</min>
+          <max>4.0</max>
+          <resolution>0.005</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.002</stddev>
+        </noise>
+      </ray>
+      <!-- Humble 无 libgazebo_ros_range.so, ray 传感器直接输出 sensor_msgs/Range -->
+      <plugin name="ultrasound_plugin" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <remapping>~/out:=ultrasound</remapping>
+        </ros>
+        <output_type>sensor_msgs/Range</output_type>
+        <gaussian_noise>0.002</gaussian_noise>
+        <frame_name>ultrasonic_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- ==================== 前置摄像头 (可选, /camera/front/image_raw) ==================== -->
+  <xacro:if value="$(arg with_camera)">
+  <gazebo reference="camera_link">
+    <sensor name="front_camera" type="camera">
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>15</update_rate>
+      <camera>
+        <horizontal_fov>1.2</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip><near>0.02</near><far>10.0</far></clip>
+      </camera>
+      <plugin name="camera_plugin" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/camera</namespace>
+          <remapping>~/image_raw:=image_raw</remapping>
+          <remapping>~/camera_info:=camera_info</remapping>
+        </ros>
+        <camera_name>front</camera_name>
+        <frame_name>camera_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+  </xacro:if>
+
+</robot>
