@@ -1,11 +1,5 @@
 # Gazebo @ WSL2 环境类
 
-## gzclient 视口全黑（GUI 菜单正常，3D 区域黑屏）
-- **现象**：Gazebo 窗口菜单/面板正常，但 3D 视口全黑；无报错。其他仿真正常。
-- **原因**：WSLg 下 gzclient（Qt 程序）默认选 **Wayland 后端**，而软件渲染（LIBGL_ALWAYS_SOFTWARE=1 的 llvmpipe）在 EGL-Wayland 路径下输出黑屏；X11/GLX 路径正常（可用 `glxgears` 验证）。
-- **解决**：launch 里加 `QT_QPA_PLATFORM=xcb` 强制走 X11(XWayland)（已加入 gazebo.launch.py，与软件渲染叠加使用）。
-- **调试提示**：多窗口环境下别按"最大窗口"截图定位——用 `_NET_WM_PID` 属性把窗口和进程 PID 精确配对，否则会抓到别的程序的窗口得出假结论（本项目实测踩过：把 RViz 窗口当成 Gazebo 分析了一圈）。
-
 ## 两个 Gazebo 实例同时运行 → 加载页卡死/世界丢失/行为诡异
 - **现象**：gzclient 卡在 "Preparing your world..."、场景缺模型、第二个实例的 gzserver 抢不到 11345 端口变成"无主"运行（物理和 ROS 插件正常、GUI 连不上）。
 - **原因**：11345 主端口只能归一个实例；两个实例的 gztransport 互相干扰。
@@ -17,9 +11,18 @@
 - **解决**：①meshes/decimated/ 减面网格（整车 61 万 → 10 万面，URDF 已默认指向），原 CAD 高模保留在 meshes/ 顶层；②世界文件关阴影（`<scene><shadows>false</shadows></scene>`）。改完后 gzclient CPU 从满载降到 ~10%，RTF 0.93。
 - **工具**：`pip3 install --user "trimesh==4.1.6" fast-simplification`（新版 trimesh 需 numpy≥2，Ubuntu 22.04 的 numpy 1.x 只能用旧版）；注意 `fast_simplification.simplify(v, f, r)` 的第三参是**要删除的面占比**（0.95 = 删 95%），不是保留占比。
 
-## gzclient 启动后窗口白屏/无响应（30~45 秒）
-- **原因**：软件渲染首次初始化 + 场景加载慢，属正常现象。
-- **解决**：等 `/performance_metrics` 话题出现（或 CPU 从满载回落）再操作视图。
+## gzclient 画面定格 / 黑屏，FPS 和 RTF 恒为 0，但仿真实际在跑
+- **现象**：世界"加载出来"后画面完全定格（首帧后不再刷新），FPS 0、Real Time Factor 0，机器人打了 cmd_vel 也"不动"（其实是画面没动）。此时无头检查一切正常：`ros2 topic hz /clock` ≈10Hz、odom 在走。左侧 World 树 Models 为空。**只在场景含小车（有 mesh visual）时出现**；空世界、home_world 不带小车都流畅。
+- **原因**：URDF 视觉写的是 `package://car_description/meshes/...`，gzserver 做 URDF→SDF 转换时会自动改写成 `model://car_description/meshes/...`（Gazebo Classic 解析器行为，源码里看不到 `model://`）。`model://` 只按 `GAZEBO_MODEL_PATH` 解析，而 car_description 此前没有导出模型路径 → 网格 URI 全部解析失败（日志 `[Err] [Visual.cc] No mesh specified`、`[Wrn] [SystemPaths.cc] File or path does not exist [""]`）→ gzclient 场景加载卡死渲染管线：llvmpipe 工作线程 `/proc/<pid>/task/*/syscall` 持续 `running` 空转，帧永不上屏。同一份 mesh，RViz 走 ament 的 `package://` 一直正常——双 URI 体系正是这个坑的迷惑点。
+- **鉴别**（与上一条"高模卡死"区分）：上一条 CPU 满载但画面仍在动（只是慢）；本条画面**零像素变化**、传输线程还在收位姿。实锤方法：`xwd -id <gzclient窗口id>` 隔 3 秒抓两帧做像素 diff，0 变化即定格。
+- **解决**：`src/car_description/package.xml` 导出模型路径，gazebo_ros 的 GazeboRosPaths（gzserver/gzclient launch 都走它）自动追加：
+  ```xml
+  <export>
+    <gazebo_ros gazebo_model_path="${prefix}/.."/>
+  </export>
+  ```
+  必须写 `${prefix}`（会被替换成包 share 目录）；只写 `..` 会变成相对 CWD 的路径，无效。改完 `colcon build --packages-select car_description` 刷新 install。等价老办法是把 mesh 拷进 `~/.gazebo/models`（Gazebo 内置默认搜索路径，wpr_simulation2 就是这么活的），但 export 随包走、不依赖手工拷贝。
+- **验证**：`tr '\0' '\n' < /proc/$(pgrep -x gzclient)/environ | grep GAZEBO_MODEL_PATH` 应含 `install/car_description/share`；修复后 FPS/RTF 恢复非 0，30s+ 不再定格。
 
 ## gzserver 启动即崩溃 / 空世界都加载不了
 - **现象**：日志出现 `D3D12: Removing Device` 或直接 segfault，连 empty.world 都起不来。
@@ -35,11 +38,6 @@
 - **现象**：kill 旧 gzserver 后立刻重启，报端口 11345 被占。
 - **原因**：端口释放有延迟。
 - **解决**：kill 后等 3~5 秒，`ss -tln | grep 11345` 确认释放再启动。
-
-## 同一世界 spawn 两辆车 → gazebo 崩溃
-- **现象**：第二辆 spawn 后报 `Found multiple nodes with same name: /imu_plugin`，gzserver 退出。
-- **原因**：两辆车的插件 ROS 节点重名。
-- **解决**：每个测试变体用全新 gzserver；不要在同一世界里 spawn 两份相同模型。
 
 ## 无头 gzserver "卡"在 Loading world file
 - **现象**：日志停在 `Loading world file`，以为挂了。

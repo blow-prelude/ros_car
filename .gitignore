@@ -3,6 +3,7 @@ log/
 install/
 
 .vscode/
+.zcode/
 **/__pycache__/
 
 frames*.gv

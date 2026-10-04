@@ -5,6 +5,7 @@
   ros2 launch car_bringup gazebo.launch.py gui:=false      # 无头模式
   ros2 launch car_bringup gazebo.launch.py rviz:=true      # 同时开 RViz
   ros2 launch car_bringup gazebo.launch.py with_camera:=true
+  ros2 launch car_bringup gazebo.launch.py localization:=false  # 不启动 IMU 滤波/EKF 融合
 """
 import os
 
@@ -33,16 +34,13 @@ def generate_launch_description():
                  LaunchConfiguration('with_camera')]),
         value_type=str)
 
-    # WSL2: Intel D3D12 驱动会让 gazebo 崩溃, 必须软件渲染;
-    # Qt 的 Wayland 后端在 llvmpipe 下输出黑屏, 强制 gzclient 走 X11(XWayland)
-    env_software_rendering = SetEnvironmentVariable('LIBGL_ALWAYS_SOFTWARE', '1')
-    env_qt_platform = SetEnvironmentVariable('QT_QPA_PLATFORM', 'xcb')
-
+   
     declare_world = DeclareLaunchArgument('world', default_value=default_world)
     declare_gui = DeclareLaunchArgument('gui', default_value='true')
     declare_rviz = DeclareLaunchArgument('rviz', default_value='false')
     declare_with_camera = DeclareLaunchArgument('with_camera', default_value='false')
     declare_use_sim_time = DeclareLaunchArgument('use_sim_time', default_value='true')
+    declare_localization = DeclareLaunchArgument('localization', default_value='true')
     declare_spawn_x = DeclareLaunchArgument('spawn_x', default_value='-3.0')
     declare_spawn_y = DeclareLaunchArgument('spawn_y', default_value='-2.0')
     declare_spawn_yaw = DeclareLaunchArgument('spawn_yaw', default_value='0.0')
@@ -82,6 +80,15 @@ def generate_launch_description():
         ],
     )
 
+    # IMU 互补滤波 + EKF 融合轮速里程计: /odometry/filtered 与 odom->base_footprint TF
+    localization = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('car_localization'),
+            'launch', 'localization.launch.py')),
+        launch_arguments={'use_sim_time': LaunchConfiguration('use_sim_time')}.items(),
+        condition=IfCondition(LaunchConfiguration('localization')),
+    )
+
     # 可选 RViz
     rviz2 = Node(
         package='rviz2',
@@ -92,14 +99,12 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        env_software_rendering,
-        env_qt_platform,
-
         declare_world,
         declare_gui,
         declare_rviz,
         declare_with_camera,
         declare_use_sim_time,
+        declare_localization,
         declare_spawn_x,
         declare_spawn_y,
         declare_spawn_yaw,
@@ -107,5 +112,6 @@ def generate_launch_description():
         gazebo,
         robot_state_publisher,
         spawn_entity,
-        rviz2,
+        localization,
+        # rviz2,
     ])

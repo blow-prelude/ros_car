@@ -51,7 +51,8 @@
 
   <!-- ==================== 差速驱动 ====================
        在仿真中扮演实物上 ESP32-S3 + 电机驱动 + 编码器的角色:
-       订阅 /cmd_vel, 积分轮速发布 /odom 与 odom->base_footprint TF -->
+       订阅 /cmd_vel, 积分轮速发布 /odom 话题作为 car_localization EKF 的输入;
+       odom->base_footprint TF 由 EKF 融合 IMU 后发布, 此处不开 publish_odom_tf -->
   <gazebo>
     <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
       <ros>
@@ -72,7 +73,7 @@
       <odometry_source>0</odometry_source>
       <max_wheel_acceleration>3.0</max_wheel_acceleration>
       <publish_odom>true</publish_odom>
-      <publish_odom_tf>true</publish_odom_tf>
+      <publish_odom_tf>false</publish_odom_tf>
       <publish_wheel_tf>true</publish_wheel_tf>
       <odometry_frame>odom</odometry_frame>
       <robot_base_frame>base_footprint</robot_base_frame>

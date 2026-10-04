@@ -5,10 +5,7 @@
 - **原因**：`parameters=[{'robot_description': [替换列表]}]` 会把**命令文本原样**传给 RSP，xacro 根本没执行。
 - **解决**：必须用 `ParameterValue(Command(['xacro ', ...]), value_type=str)` 包裹（官方 URDF 教程写法）。
 
-## 改了 xacro/launch 但行为没变
-- **现象**：编辑 src/ 下的文件后，仿真行为和之前完全一样。
-- **原因**：`$(find pkg)`、`<xacro:include>`、launch 文件全部解析到 **install/** 里的拷贝；没重新 colcon build 等于没改。
-- **解决**：改完必须 `colcon build` 并重新 source。偶尔普通 rebuild 也不重拷 launch 文件——删掉 `build/<pkg>` 和 `install/<pkg>` 强制重建。
+
 
 ## `pkill -f` 把自己的终端杀了
 - **现象**：执行 `pkill -f gzserver` / `pkill -f "ros2 launch"` 后整个命令无输出退出。
@@ -20,7 +17,10 @@
 - **原因**：gazebo 插件对未知标签静默忽略，用默认值。
 - **解决**：以插件源码为准核对标签名（本例正确名是 `max_wheel_acceleration`），不确定就 grep 源码或 `strings libxxx.so`。
 
-## Bash 里 `A && B &` 的陷阱
-- **现象**：`source ... && gzserver ... &` 后续命令找不到环境。
-- **原因**：`&` 优先级低，把**整条 && 链**（含 source）都放到了后台。
-- **解决**：source 单独一行，gzserver 另起一行再加 `&`。
+## include 别的 launch 后，自己的同名参数被覆盖（节点悄悄不启动）
+- **现象**：`slam.launch.py` 自己声明了 `rviz` 参数（默认 true）并 include `gazebo.launch.py`（它也声明 `rviz`、自己传了 `rviz:=false`），结果 `ros2 launch ... rviz:=true` 时 rviz2 节点**不启动且日志无任何输出**。
+- **原因**：include 执行时同名 launch configuration 被写入 `false`，等访问到自己的节点时 `IfCondition(LaunchConfiguration('rviz'))` 已为假。launch 对此完全静默。
+- **解决**：顶层参数起不撞名的名字（本包用 `slam_rviz`）；给 include 传参时避免与顶层用户参数重名。判断依据：节点未启动且日志零输出 → 优先怀疑参数撞名，`ros2 node list` 确认后改名即好。
+
+
+

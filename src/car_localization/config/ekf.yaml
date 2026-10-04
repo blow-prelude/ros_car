@@ -1,0 +1,53 @@
+# robot_localization ekf_filter_node：轮速里程计 + 滤波 IMU 融合（ROS 2 Humble）
+# 输入 /odom（diff_drive 编码器积分）与 /imu/data_filtered（car_localization/imu_filter 互补滤波）
+# 输出 /odometry/filtered 与 TF odom->base_footprint（EKF 是该变换的唯一发布者；
+# 仿真侧 diff_drive 插件已关 publish_odom_tf，见 car_description/urdf/car.gazebo.xacro）
+ekf_filter_node:
+  ros__parameters:
+    use_sim_time: true
+    frequency: 50.0          # 与 diff_drive 更新率一致
+    sensor_timeout: 0.2      # 超时只做预测，不卡死输出
+    two_d_mode: true         # 平面车：roll/pitch/z 及其速度强制为 0
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+    print_diagnostics: false
+    publish_tf: true
+    publish_acceleration: false
+
+    odom_frame: odom
+    base_link_frame: base_footprint
+    world_frame: odom        # 连续估计器：odom->base_footprint
+
+    # ---- 轮速里程计：位置 x/y/yaw + 速度 vx/vyaw ----
+    odom0: /odom
+    #        x      y      z      roll   pitch  yaw    vx     vy     vz
+    odom0_config: [true,  true,  false,
+                   false, false, true,
+                   true,  false, false,
+    #        vroll  vpitch vyaw   ax     ay     az
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+
+    # ---- 滤波 IMU：yaw（陀螺积分）+ vyaw + 前向加速度 ax/ay ----
+    # roll/pitch 不喂（two_d_mode 会清零）；yaw 与 vyaw 同源但为官方模板推荐组合
+    imu0: /imu/data_filtered
+    #        x      y      z      roll   pitch  yaw    vx     vy     vz
+    imu0_config: [false, false, false,
+                  false, false, true,
+                  false, false, false,
+    #        vroll  vpitch vyaw   ax     ay     az
+                  false, false, true,
+                  true,  true,  false]
+    imu0_differential: false
+    imu0_relative: true      # 以首帧为基准（陀螺积分本就是相对航向）
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
+
+    # process_noise_covariance / initial_estimate_covariance 不设,
+    # 用 robot_localization 内置默认（15x15 全矩阵, 官方模板值）;
+    # 自定义必须给全 225 个元素, 缺失补零会协方差奇异导致 NaN 发散（实测）
+    # 注: use_sim_time 下 gzserver 世界加载期（/clock 未起）EKF 会刷几秒
+    # "NaNs were detected" 并自动复位, 时钟启动后恢复正常, TF 端会丢弃 NaN 变换（无害）
