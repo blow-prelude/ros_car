@@ -34,7 +34,7 @@ Gazebo 插件(urdf/car.gazebo.xacro)
 TCP:10000 → gateway → /wheels/uplink(String, reliable) → translator → /cmd_vel(Twist, reliable d1) → diff_drive
 ```
 
-* **TF 唯一发布者**：`odom→base_footprint` 只由 EKF 发布（diff\_drive 插件 `publish_odom_tf: false`）；`map→odom` 由 slam\_toolbox。新增节点不得重复发布。
+* **TF 唯一发布者**：`odom→base_footprint` 只由 EKF 发布（diff\_drive 插件 `publish_odom_tf` 默认 false）；`map→odom` 由 slam\_toolbox。新增节点不得重复发布。裸仿真（不启动定位栈）可 `gazebo.launch.py with_odom_tf:=true` 改由插件轮速积分发布该 TF，与 EKF 路径互斥（launch 内 OpaqueFunction 防呆，非法组合拒绝启动）。
 
 * **QoS 契约（冻结）**：`/cmd_vel` reliable depth1；`/odom`、`/wheels/downlink` best\_effort depth10（REP 2003）；`/wheels/uplink` reliable depth10；IMU 订阅用 `SensorDataQoS()`。改默认值 = 破坏外部兼容。
 
@@ -104,7 +104,7 @@ colcon test && colcon test-result --all
 
 **编码要求**：
 
-* 日志输出要充分，debug 级别稍多一些：正常路径用 `RCLCPP_DEBUG` 标注分支走向与中间量（状态机切换、滤波中间值、丢包原因），`INFO` 只留关键事件，异常分支 `WARN/ERROR`。
+* 日志输出要充分，debug 级别稍多一些：正常路径用 `RCLCPP_DEBUG` 标注分支走向与中间量（状态机切换、滤波中间值、丢包原因），`INFO` 只留关键事件，异常分支 `WARN/ERROR`。日志输出多用英文，注释用中文
 
 * 接口做类型检验与数据校验，**内部实现信任接口已做的校验，不做重复防御**：校验集中在边界一处（节点入口解析函数如 `parse_envelope`/`extract_twist`、launch 参数声明、QoS 选型、TCP 帧定界）；通过边界后的内部函数不再判空/判类型/判范围。校验失败处置=整包丢弃+计数+限流日志，不抛异常、不部分生效。
 

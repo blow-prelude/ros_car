@@ -3,7 +3,7 @@
 ## 两个 Gazebo 实例同时运行 → 加载页卡死/世界丢失/行为诡异
 - **现象**：gzclient 卡在 "Preparing your world..."、场景缺模型、第二个实例的 gzserver 抢不到 11345 端口变成"无主"运行（物理和 ROS 插件正常、GUI 连不上）。
 - **原因**：11345 主端口只能归一个实例；两个实例的 gztransport 互相干扰。
-- **解决**：同一时间只跑一个 Gazebo 实例；确需并行时给每个实例设不同的 `GAZEBO_MASTER_URI`（如 http://localhost:11346）。GUI 现象诡异时先检查 `pgrep -x gzserver` 是不是不止一个。
+- **解决**：同一时间只跑一个 Gazebo 实例；确需并行时给每个实例设不同的 `GAZEBO_MASTER_URI`（如 http://localhost:11346）。GUI 现象诡异时先检查 `pgrep -x gzserver` 是不是不止一个。仅杀 gzserver 不够——残留的孤儿 ROS 节点同样致乱，见下条 TF_OLD_DATA。
 
 ## gzclient 打开后完全卡死（视角拖不动，无报错）
 - **现象**：`ros2 launch car_bringup gazebo.launch.py` 一切正常加载完，但 Gazebo 窗口冻住、相机拖不动；无头模式（gui:=false）却一切正常。
@@ -43,6 +43,17 @@
 - **现象**：日志停在 `Loading world file`，以为挂了。
 - **原因**：软件渲染首次初始化着色器缓存很慢（WSL 上可达 30s+）。
 - **解决**：等 `/clock` 话题出现再操作；日志不实时刷新不代表没在跑。
+
+## 残留孤儿节点导致 TF_OLD_DATA 恒定刷屏
+- **现象**：启动仿真后终端持续刷 `TF_OLD_DATA ignoring data from the past for frame odom at time X.XX`（rviz2、slam_toolbox、ekf_node 三方同时打印），且时间戳恒定不变（如 27.23）。
+- **原因**：ROS 域里存在两套栈。launch 进程被强杀/只清了部分进程时，slam_toolbox、ekf_node 等子进程残留为孤儿（`ros2 node list` 可见节点成对重复）。孤儿 slam_toolbox 的 `/clock` 冻结在 gzserver 死亡时刻，但 wall timer 仍以 50Hz 发布 map→odom（时间戳恒定），与现役 slam_toolbox 的 map→odom 交错到达，互相被判为"来自过去"。注意单栈下 slam_toolbox 车不动时 map→odom 时间戳恒定是**正常**行为（唯一发布者，恒定值被 TF 静默去重），不产生告警；出现刷屏必然是同边有第二个发布者。
+- **解决**：全量清理后再启动。kill 名单必须包含**全部**节点进程名（`pkill -x` 要写全名，少打 `_node` 后缀会静默漏杀）：
+  ```bash
+  for n in gzserver gzclient rviz2 async_slam_toolbox_node ekf_node imu_filter_node robot_state_publisher; do pkill -x $n; done; sleep 5
+  # 仍存活者补刀: pkill -9 -x <名>（孤儿常卡在不可中断态，SIGTERM 杀不动）
+  ```
+  启动前检查：`pgrep -x gzserver` 为空且 `ros2 node list` 无成对重复节点。
+- **验证**：清理后单栈启动 50s，日志 TF_OLD_DATA 出现 0 次；/tf 监听确认每条边只有一条单调时间戳流。
 
 ## `ros2 topic echo --once` 拿数据很慢
 - **现象**：echo 一次要 1~2 秒。

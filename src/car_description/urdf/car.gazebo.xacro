@@ -6,6 +6,12 @@
        需要时用 xacro car.urdf.xacro with_camera:=true 开启。 -->
   <xacro:arg name="with_camera" default="false"/>
 
+  <!-- odom->base_footprint TF 发布者选择: 默认 false, 由 car_localization 的 EKF
+       融合 IMU 后发布 (TF 单一发布者契约, 见 ekf.yaml); 裸仿真(不启动定位栈)时
+       传 with_odom_tf:=true 改由 diff_drive 插件轮速积分发布。
+       两个来源互斥: 同时发布会双发布者互相覆盖, launch 层有防呆检查 -->
+  <xacro:arg name="with_odom_tf" default="false"/>
+
   <!-- ==================== 摩擦与接触 ==================== -->
   <!-- 驱动轮: 高摩擦提供牵引力; 不显式设置 kp/kd, 使用默认接触参数
        (自调 kp/kd 会与差速插件速度伺服耦合产生锁轮极限环, 表现为静止爬行) -->
@@ -52,7 +58,7 @@
   <!-- ==================== 差速驱动 ====================
        在仿真中扮演实物上 ESP32-S3 + 电机驱动 + 编码器的角色:
        订阅 /cmd_vel, 积分轮速发布 /odom 话题作为 car_localization EKF 的输入;
-       odom->base_footprint TF 由 EKF 融合 IMU 后发布, 此处不开 publish_odom_tf -->
+       odom->base_footprint TF 默认由 EKF 发布, with_odom_tf:=true 时才由本插件发布 -->
   <gazebo>
     <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
       <ros>
@@ -73,7 +79,7 @@
       <odometry_source>0</odometry_source>
       <max_wheel_acceleration>3.0</max_wheel_acceleration>
       <publish_odom>true</publish_odom>
-      <publish_odom_tf>false</publish_odom_tf>
+      <publish_odom_tf>$(arg with_odom_tf)</publish_odom_tf>
       <publish_wheel_tf>true</publish_wheel_tf>
       <odometry_frame>odom</odometry_frame>
       <robot_base_frame>base_footprint</robot_base_frame>

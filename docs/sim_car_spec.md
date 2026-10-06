@@ -62,7 +62,7 @@ meshes 文件：chassis / drive_wheels（按 x_m 拆分为 wheel_left[x_m≥0] /
 | IMU | /imu/data @ imu_link | 200Hz；**只支持单一 noise 块**，逐轴 noise 写法会解析异常 |
 | 超声波 | /ultrasound (Range) @ ultrasonic_link | 10Hz，5 射线模拟 15° 视场，0.02–4m；**Humble 无 libgazebo_ros_range.so，用 ray_sensor 的 `<output_type>sensor_msgs/Range`**（注意类型名不带 `msg/`） |
 | 摄像头 | /camera/front/image_raw | 默认关闭（`with_camera:=true` 开启）；WSL 下 GPU 离屏渲染会导致 gzserver 崩溃，软件渲染时可用 |
-| 轮式里程计 | /odom + TF odom→base_footprint | 编码器积分，含协方差 |
+| 轮式里程计 | /odom + TF odom→base_footprint | 编码器积分，含协方差；TF 发布者可选：默认 EKF 融合 IMU 发布，裸仿真传 `with_odom_tf:=true` 改由 diff_drive 插件发布（与 EKF 路径互斥，gazebo.launch.py 防呆强制） |
 
 TF 树：odom → base_footprint → base_link → {wheel_left/right_link, caster_link, laser_frame, imu_link, ultrasonic_link, camera_link, chassis_link, battery_link, controller_link, tt_motor_link}
 

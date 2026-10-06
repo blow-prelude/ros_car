@@ -1,7 +1,8 @@
 # robot_localization ekf_filter_node：轮速里程计 + 滤波 IMU 融合（ROS 2 Humble）
 # 输入 /odom（diff_drive 编码器积分）与 /imu/data_filtered（car_localization/imu_filter 互补滤波）
 # 输出 /odometry/filtered 与 TF odom->base_footprint（EKF 是该变换的唯一发布者；
-# 仿真侧 diff_drive 插件已关 publish_odom_tf，见 car_description/urdf/car.gazebo.xacro）
+# 仿真侧 diff_drive 插件 publish_odom_tf 默认 false, 裸仿真可 with_odom_tf:=true
+# 改由插件发布, 见 car_description/urdf/car.gazebo.xacro）
 ekf_filter_node:
   ros__parameters:
     use_sim_time: true
