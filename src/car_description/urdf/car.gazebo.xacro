@@ -80,12 +80,32 @@
       <max_wheel_acceleration>3.0</max_wheel_acceleration>
       <publish_odom>true</publish_odom>
       <publish_odom_tf>$(arg with_odom_tf)</publish_odom_tf>
-      <publish_wheel_tf>true</publish_wheel_tf>
+      <!-- 轮子 TF(base_link->wheel_*) 唯一发布者是 robot_state_publisher(消费
+           libgazebo_ros_joint_state_publisher.so 发的 /joint_states); 本插件若同时
+           开 publish_wheel_tf 会形成双发布者互相覆盖(TF 单一发布者契约), 必须关闭 -->
+      <publish_wheel_tf>false</publish_wheel_tf>
       <odometry_frame>odom</odometry_frame>
       <robot_base_frame>base_footprint</robot_base_frame>
       <covariance_x>0.0001</covariance_x>
       <covariance_y>0.0001</covariance_y>
       <covariance_yaw>0.001</covariance_yaw>
+    </plugin>
+  </gazebo>
+
+  <!-- ==================== 关节状态发布 ====================
+       轮关节是 continuous 类型, robot_state_publisher 必须收到 /joint_states 才能发布
+       base_link->wheel_* TF; 实物上该消息由 ESP32 编码器经 translator 上行, 仿真中由本
+       插件从物理引擎读真实轮角补位(50Hz 与 /odom 同频)。万向轮/传感器支架均为 fixed
+       关节, RSP 直接从 URDF 发布, 无需进本插件 -->
+  <gazebo>
+    <plugin name="joint_state_publisher" filename="libgazebo_ros_joint_state_publisher.so">
+      <ros>
+        <namespace>/</namespace>
+        <remapping>joint_states:=joint_states</remapping>
+      </ros>
+      <update_rate>50</update_rate>
+      <joint_name>wheel_left_joint</joint_name>
+      <joint_name>wheel_right_joint</joint_name>
     </plugin>
   </gazebo>
 

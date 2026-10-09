@@ -100,7 +100,9 @@ src/car_bringup/config/car.rviz         # Grid/RobotModel/TF/LaserScan/Odometry,
 
 用法：`ros2 launch car_bringup gazebo.launch.py [gui:=false|rviz:=true|with_camera:=true|spawn_x/y/yaw:=...]`（launch 内已设 LIBGL_ALWAYS_SOFTWARE=1）。
 
-已验证：spawn 成功；雷达四向墙距与布局核算一致（前 3.36m 电视柜 / 后 1.09m 西墙 / 左 4.96m 北墙 / 右 0.94m 南墙）；odom→laser TF 链完整（-0.042, 0, 0.143）；/joint_states、/tf_static 正常。
+已验证：spawn 成功；雷达四向墙距与布局核算一致（前 3.36m 电视柜 / 后 1.09m 西墙 / 左 4.96m 北墙 / 右 0.94m 南墙）；odom→laser TF 链完整（-0.042, 0, 0.143）；/tf_static 正常。
+
+勘误（2026-10-07）：本节原先记载"/joint_states 正常"失实——全仓库当时无任何发布者，RSP 收不到连续关节（轮）状态。现由 car.gazebo.xacro 的 libgazebo_ros_joint_state_publisher.so 以 50Hz 发布轮角，同时关闭 diff_drive 的 publish_wheel_tf（避免与 RSP 双发布轮子 TF）。
 
 ## 9. 后续（未创建）
 
