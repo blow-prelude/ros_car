@@ -27,7 +27,8 @@
 ## gzserver 启动即崩溃 / 空世界都加载不了
 - **现象**：日志出现 `D3D12: Removing Device` 或直接 segfault，连 empty.world 都起不来。
 - **原因**：WSL2 的 Intel D3D12 显卡驱动让 OGRE 离屏渲染崩溃。
-- **解决**：`export LIBGL_ALWAYS_SOFTWARE=1` 强制软件渲染（ray/imu 传感器完全够用，摄像头也能工作只是慢）。本项目已写进 gazebo.launch.py。
+- **解决**：`export LIBGL_ALWAYS_SOFTWARE=1` 强制软件渲染（ray/imu 传感器完全够用，摄像头也能工作只是慢）。
+  注意这是**环境变量**、写用户 shell（`~/.bashrc`/`~/.zshrc`），`gazebo.launch.py` **并未代设**；2026-10-10 迁到原生 Ubuntu + NVIDIA 机器后该变量已移除且不再需要（硬件渲染正常），**若回到 WSL2 要自己加回来**。
 
 ## 摄像头传感器导致整个仿真崩溃
 - **现象**：带 camera sensor 的模型一 spawn，gzserver 就死。

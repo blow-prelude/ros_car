@@ -19,5 +19,16 @@
 
   <export>
     <build_type>ament_cmake</build_type>
+    <!-- gazebo_ros 的 GazeboRosPaths 据此把 <prefix>/models 追加到 gzserver/gzclient 的
+         GAZEBO_MODEL_PATH, 使世界里的 <include><uri>model://ground_plane</uri></include>
+         和 model://sun 能离线解析到本包自带的副本。
+         为什么必须导出: gzserver.launch.py 会把 GAZEBO_MODEL_PATH 与 GAZEBO_RESOURCE_PATH
+         整个覆盖成"各包导出的路径", Gazebo 自带的 /usr/share/gazebo-11/models 因此不在
+         搜索路径内 —— 这两个模型只能靠本包导出或 ~/.gazebo/models 手工拷贝才能找到。
+         找不到时 gzserver 会回落到在线模型库 http://models.gazebosim.org/, 网络慢时卡在
+         [Wrn] [ModelDatabase.cc:340] 长时间不返回: 世界永远加载不完, /spawn_entity 不注册,
+         spawn_entity.py 30s 超时退出, gzclient 停在 "Preparing your world..." ——
+         现象就是"Gazebo 无响应"。 -->
+    <gazebo_ros gazebo_model_path="${prefix}/models"/>
   </export>
 </package>

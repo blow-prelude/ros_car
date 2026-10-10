@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-ROS 2 Humble + Gazebo Classic 11 仿真小车工作区（WSL2）。差速三轮车 `xuegecar`：移动 / 定位 / SLAM / 外部 Qt 面板遥控遥测。**注释与文档一律中文**，写清设计动机与踩坑原因。
+ROS 2 Humble + Gazebo Classic 11 仿真小车工作区（Ubuntu 原生 + NVIDIA GPU；历史 WSL2 前提见「运行时与工具链」）。差速三轮车 `xuegecar`：移动 / 定位 / SLAM / 外部 Qt 面板遥控遥测。**注释与文档一律中文**，写清设计动机与踩坑原因。
 
 ## 项目概述
 
@@ -53,6 +53,7 @@ src/
   car_description/   纯数据包：urdf/car.urdf.xacro(本体) car.gazebo.xacro(全部Gazebo插件)
                      meshes/decimated/(减面网格,URDF默认引用,勿改回高模)
   car_bringup/       纯数据包：launch/gazebo.launch.py(仿真总入口) worlds/home_world.sdf config/car.rviz
+                     models/(world 引用的 ground_plane+sun 离线副本, package.xml 导出模型路径)
   car_localization/  C++：src/imu_filter_node.cpp  config/ekf.yaml  launch/localization.launch.py
   car_slam/          纯数据包：config/slam_toolbox.yaml  launch/slam.launch.py  rviz/slam.rviz
   car_route/         C++：src/gateway_node.cpp translator_node.cpp  third_party/nlohmann/json.hpp(vendor单头)
@@ -63,26 +64,7 @@ docs/devel/          新设计文档存放处（见「工作规范」）
 build/ install/ log/ colcon 产物（git 忽略，勿手改 install/）
 ```
 
-## 开发命令
 
-```bash
-# 每个 shell 先 source（bash 用 setup.bash）
-source /opt/ros/humble/setup.bash
-cd ~/projects/ros_car
-
-# 构建：只编改动的包；改 URDF/xacro 后必须重建（xacro 解析的是 install/ 旧拷贝）
-colcon build --symlink-install --packages-select car_localization
-source install/setup.bash
-
-# 运行（Gazebo 同一时间只能一个实例，kill 后等 3~5s 再启）
-ros2 launch car_bringup gazebo.launch.py                 # 总入口，默认含定位栈；gui:=false 无头
-ros2 launch car_slam slam.launch.py gui:=false           # 建图（内部强制 rviz:=false，RViz 用 slam_rviz:=true）
-ros2 run car_route gateway                               # TCP:10000 ↔ /wheels/uplink|downlink
-ros2 run car_route translator                            # /wheels/* ↔ /cmd_vel|/odom
-
-# 测试（现仅 lint，见「测试与质量保障」）
-colcon test && colcon test-result --all
-```
 
 ## 代码规范与常见模式
 
@@ -110,19 +92,6 @@ colcon test && colcon test-result --all
 
 * 代码保持可读性与简约性：无第二实现前不引入抽象基类/DI/接口层；删净无用代码与注释掉的死代码；注释解释"为什么"（踩坑/约束），不复述"做了什么"。
 
-## 重要文件
-
-| 文件                                            | 说明                                                            |
-| --------------------------------------------- | ------------------------------------------------------------- |
-| `src/car_bringup/launch/gazebo.launch.py`     | 仿真总入口：Gazebo + RSP + spawn + 条件 include 定位栈                   |
-| `src/car_description/urdf/car.urdf.xacro`     | 本体模型（坐标约定与惯量/碰撞设计见 `docs/sim_car_spec.md`）                    |
-| `src/car_description/urdf/car.gazebo.xacro`   | 全部 Gazebo 插件：diff\_drive、雷达、IMU、超声波、可选相机                      |
-| `src/car_localization/config/ekf.yaml`        | EKF 融合：odom0=/odom + imu0=/imu/data\_filtered，two\_d\_mode    |
-| `src/car_slam/config/slam_toolbox.yaml`       | 建图参数：mode=mapping，base\_frame=base\_footprint                 |
-| `src/car_route/third_party/nlohmann/json.hpp` | vendor 单头（v3.11.3），勿替换为系统依赖                                   |
-| `docs/sim_car_spec.md`                        | 车体规格、STL 毫米装配系约定、9 条踩坑记录                                      |
-| `docs/FAQS/*.md`                              | 实测验证过的 FAQ：`gazebo-wsl.md`、`ros2-launch.md`、`urdf-physics.md` |
-| `docs/2026-10-03-design-ros2-robot-side.md`   | car\_route 设计（§3 JSON 协议=冻结契约，§11 验证方案）                       |
 
 ## 运行时与工具链
 
@@ -130,7 +99,9 @@ colcon test && colcon test-result --all
 
 * C++17，`-Wall -Wextra -Wpedantic`；colcon isolated 布局；zsh/bash 均可用。
 
-* **软件渲染是硬约束**：WSL2 下 `LIBGL_ALWAYS_SOFTWARE=1` 已写入用户 shell 环境变量（launch 文件未代设，勿在代码中覆盖或移除该依赖，**禁止改用硬件渲染**）。连带约束：URDF 视觉必须用 `meshes/decimated/` 减面网格；世界 `shadows:false`；摄像头默认关（`with_camera:=false`，GPU 离屏渲染会崩 gzserver）。
+* **渲染前提（2026-10-10 更正）**：当前开发机**不是 WSL2**，是原生 Ubuntu + NVIDIA（RTX 3090，驱动 580）；硬件渲染正常，`LIBGL_ALWAYS_SOFTWARE` 未设置也**不需要**设置。历史上本项目在 WSL2 上开发，那时它是硬约束（Intel D3D12 驱动会让 OGRE 离屏渲染崩溃）——**若回到 WSL2 必须重新 `export LIBGL_ALWAYS_SOFTWARE=1`**，并同步改回本节与 `docs/FAQS/gazebo-wsl.md` 的表述。渲染开销的连带约束继续保留（软件渲染下是硬约束，硬件下同样省开销）：URDF 视觉用 `meshes/decimated/` 减面网格（勿改回高模）；世界 `shadows:false`；摄像头默认关（`with_camera:=false`）。
+
+* **世界里的 `model://` 必须能离线解析**：gzserver/gzclient 的 `GAZEBO_MODEL_PATH` 与 `GAZEBO_RESOURCE_PATH` 被 `gazebo_ros` 的 launch **整个覆盖**成"各包导出的路径"，Gazebo 自带的 `/usr/share/gazebo-11/models` 因此不在搜索范围内。任何 `model://` 一旦本地找不到，gzserver 就回落到在线模型库 `http://models.gazebosim.org/`，网络慢时会卡在 `[Wrn] [ModelDatabase.cc:340]` 长时间不返回——链条是：世界永远加载不完 → `/spawn_entity` 不注册 → `spawn_entity.py` 超时退出 → gzclient 停在 "Preparing your world..."，**现象就是"Gazebo 无响应"**。`home_world.sdf` 用到的 `ground_plane`/`sun` 已随包放在 `src/car_bringup/models/` 并由 package.xml 导出；**新增 `model://` 引用必须同样随包携带**，不要指望 `~/.gazebo/models` 手工拷贝或在线库（详见 `docs/FAQS/gazebo-model-path.md`）。
 
 * 已知环境坑（详见 `docs/FAQS/gazebo-wsl.md`）：单 Gazebo 实例（端口 11345 释放慢）；杀进程用 `pkill -x` 勿用 `pkill -f`（会杀终端）。
 

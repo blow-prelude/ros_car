@@ -95,6 +95,10 @@ def generate_launch_description():
         arguments=[
             '-entity', 'xuegecar',
             '-topic', 'robot_description',
+            # /spawn_entity 服务要等 gzserver 把世界加载完才注册, 而 spawn_entity.py
+            # 默认只等 30s; 机器忙或首次加载偏慢时不够, 会白跑一次启动(车不出现)。
+            # 放宽只影响"等多久才判失败", 服务就绪即继续, 不拖慢正常路径。
+            '-timeout', '120',
             '-x', LaunchConfiguration('spawn_x'),
             '-y', LaunchConfiguration('spawn_y'),
             '-z', '0.01',
