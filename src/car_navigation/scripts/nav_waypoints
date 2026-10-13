@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""导航回归脚本: 按固定航点表走一遍, 逐段打印结果(自动化版的"指令->实测->结论")。
+
+用法:
+  ros2 launch car_navigation navigation.launch.py      # 另开终端先把导航栈起起来
+  ros2 run car_navigation nav_waypoints                # 走一遍
+  ros2 run car_navigation nav_waypoints --loop 3       # 连跑 3 遍(看重复定位精度是否漂)
+
+航点表坐标是 map 帧。map 帧原点 = 建图起点 = 世界 (-3,-2)(核算见
+docs/devel/2026-10-13-design-navigation-stack.md §3), 故 map 坐标 = 世界坐标 + (3, 2)。
+每个点都按 home_world.sdf 的家具占位核算过(注释写明了为什么在那儿), 换地图或改家具后
+必须重新核对 —— 最省事的办法是在 RViz 里用 2D Goal Pose 先试一遍。
+
+退出码: 0 = 全部航点到达; 1 = 有航点失败(逐段日志能看到卡在哪一段)。
+"""
+import argparse
+import math
+import sys
+import time
+
+from geometry_msgs.msg import PoseStamped
+from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
+import rclpy
+
+# (名字, map_x, map_y, yaw_rad, 选址理由)
+WAYPOINTS = [
+    ('living_n', 0.6, 3.5, 0.0,
+     '客厅北侧空地: 沙发(世界 x<-3.0)、茶几(y∈[-0.3,0.3])、书架(y>1.3 且 x<-3.5)都在别处'),
+    ('door_mid', 4.0, 2.0, 0.0,
+     '客厅/厨卧隔墙的门洞正中: 门洞在世界 x=1, y∈[-0.4,0.4], 略偏 +y 留出桌角余量'),
+    ('kitchen', 4.7, 0.6, 0.0,
+     '厨房西南空地: 冰箱(y<-2.32)、南橱柜、东橱柜(世界 x>3.35)都够远'),
+    ('door_mid_2', 4.0, 2.0, 0.0,
+     '回门洞(原路返回, 检查双向通过)'),
+    ('table_ne', 5.3, 2.9, 0.0,
+     '绕过圆餐桌的中间点: 餐桌在世界 (2.4,0.1) 半径 0.45, 椅子2 在 (2.4,-0.7), '
+     '只有东北侧这条缝能通到卧室门(x∈[2.4,3.2] 的墙洞)'),
+    ('bedroom_door', 5.8, 3.2, 0.0,
+     '卧室门内侧窄带: 床(世界 y>1.4)与墙(y=1.05)之间只剩 0.35m 宽, 车宽 0.165m 勉强通过, '
+     '所以目标就定在刚进门的位置, 不往床深处钻'),
+]
+
+
+def make_pose(navigator, x, y, yaw):
+    """map 帧下的目标位姿(yaw 只影响终点的朝向, 平面车只有偏航有意义)"""
+    pose = PoseStamped()
+    pose.header.frame_id = 'map'
+    pose.header.stamp = navigator.get_clock().now().to_msg()
+    pose.pose.position.x = x
+    pose.pose.position.y = y
+    pose.pose.orientation.z = float(math.sin(yaw / 2.0))
+    pose.pose.orientation.w = float(math.cos(yaw / 2.0))
+    return pose
+
+
+def run_round(navigator, round_index):
+    """跑一轮航点表, 返回失败段数"""
+    failures = 0
+    total = len(WAYPOINTS)
+    for i, (name, x, y, yaw, why) in enumerate(WAYPOINTS, start=1):
+        navigator.get_logger().info(
+            'round %d leg %d/%d -> %s (map %.2f, %.2f)' % (round_index, i, total, name, x, y))
+        start = time.monotonic()
+        navigator.goToPose(make_pose(navigator, x, y, yaw))
+        while not navigator.isTaskComplete():
+            # goToPose 内部已在自旋, 这里只做完成度日志(慢速底盘, 一段可能要十几秒)
+            feedback = navigator.getFeedback()
+            if feedback is not None and feedback.distance_remaining > 0.0:
+                navigator.get_logger().debug(
+                    'leg %d remaining %.2f m' % (i, feedback.distance_remaining))
+        elapsed = time.monotonic() - start
+        result = navigator.getResult()
+        if result == TaskResult.SUCCEEDED:
+            navigator.get_logger().info('leg %d/%d %s OK (%.1fs)' % (i, total, name, elapsed))
+        else:
+            failures += 1
+            # FAILED / CANCELED 都说明这一段的链路有问题, 直接指出可能原因便于查
+            navigator.get_logger().error(
+                'leg %d/%d %s FAILED (%s, %.1fs): 查 RViz 的全局路径与代价地图, '
+                '多半是目标被膨胀层吃掉或局部队列跟丢'
+                % (i, total, name, str(result), elapsed))
+    return failures
+
+
+def main():
+    parser = argparse.ArgumentParser(description='car_navigation 航点回归')
+    parser.add_argument('--loop', type=int, default=1, help='重复轮数(默认 1)')
+    args = parser.parse_args()
+
+    rclpy.init()
+    navigator = BasicNavigator(node_name='nav_waypoints')
+    total_failures = 0
+    try:
+        navigator.get_logger().info('waiting for nav2 to become active ...')
+        navigator.waitUntilNav2Active()
+        navigator.get_logger().info(
+            'nav2 active; %d waypoints x %d round(s)' % (len(WAYPOINTS), args.loop))
+
+        for r in range(1, args.loop + 1):
+            total_failures += run_round(navigator, r)
+            if total_failures:
+                # 已经出错就不继续叠轮次了, 免得刷屏掩盖第一次失败的位置
+                navigator.get_logger().warn('stopping early after failure(s)')
+                break
+    except KeyboardInterrupt:
+        navigator.get_logger().warn('interrupted, canceling current goal')
+        navigator.cancelTask()
+        total_failures = 1
+    finally:
+        navigator.get_logger().info('done: %d failure(s)' % total_failures)
+        navigator.destroy_node()
+        rclpy.shutdown()
+
+    return 1 if total_failures else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

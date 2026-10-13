@@ -1,0 +1,72 @@
+# 定位层参数: nav2 map_server(加载离线栅格图) + amcl(图上定位, 发布 map->odom)
+# 经 nav2_bringup/localization_launch.py 的 params_file 接口注入, 由 navigation.launch.py 传入。
+# 设计依据见 docs/devel/2026-10-13-design-navigation-stack.md §3/§5.3。
+
+amcl:
+  ros__parameters:
+    use_sim_time: true
+
+    # ---- 坐标系与话题: 与 car_slam/config/slam_toolbox.yaml 逐项对齐 ----
+    # 导航模式下 map->odom 的唯一发布者(建图模式是 slam_toolbox, 两者互斥)
+    global_frame_id: map
+    odom_frame_id: odom
+    base_frame_id: base_footprint
+    scan_topic: scan
+    robot_model_type: nav2_amcl::DifferentialMotionModel
+    tf_broadcast: true
+    transform_tolerance: 1.0
+
+    # ---- 初始位姿 ----
+    # 建图与导航都从世界 (-3,-2) yaw 0 出生, 该点即 map 帧原点(核算见设计文档 §3),
+    # 故 (0,0,0) 就是真值附近。改出生点后必须用 RViz "2D Pose Estimate" 重新定位。
+    set_initial_pose: true
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+
+    # ---- 观测模型: 似然场, 与 8x6m 室内栅格图配合良好 ----
+    laser_model_type: likelihood_field
+    laser_likelihood_max_dist: 2.0
+    # -1.0 = 取雷达自带范围(本车 0.10-12m, 见 docs/sim_car_spec.md §5), 不在此重复写死
+    laser_max_range: -1.0
+    laser_min_range: -1.0
+    max_beams: 90
+    sigma_hit: 0.2
+    z_hit: 0.5
+    z_rand: 0.5
+    z_max: 0.05
+    z_short: 0.05
+
+    # ---- 粒子数与重采样(8x6m 小图, 默认量级足够) ----
+    min_particles: 500
+    max_particles: 2000
+    pf_err: 0.05
+    pf_z: 0.99
+    resample_interval: 1
+
+    # ---- 运动噪声: 本车 odom 为编码器积分 + EKF, 原地转向有 ~15% 偏差(spec §6.9), 用 nav2 默认 alpha ----
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
+    alpha5: 0.2
+
+    # ---- 更新阈值: 车慢(v<=0.3m/s), 比 nav2 默认(0.25/0.2)更密 ----
+    update_min_d: 0.10
+    update_min_a: 0.10
+
+    save_pose_rate: 0.5
+    do_beamskip: false
+    beam_skip_distance: 0.5
+    beam_skip_threshold: 0.3
+    beam_skip_error_threshold: 0.9
+
+map_server:
+  ros__parameters:
+    use_sim_time: true
+    # 该键必须显式存在: nav2_bringup/localization_launch.py 用 RewrittenYaml 按 map:= 重写它,
+    # 而 RewrittenYaml 只替换**已存在**的叶子键(已读 nav2_common 源码确认), 漏写会静默用空路径,
+    # 表现为 map_server 起不来/无 /map。
+    yaml_filename: ""

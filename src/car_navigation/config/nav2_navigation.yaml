@@ -1,0 +1,244 @@
+# 导航层参数: controller_server / planner_server / smoother_server / behavior_server /
+#             bt_navigator / waypoint_follower / velocity_smoother + 两级代价地图。
+# 由 navigation.launch.py 逐节点注入(第二个参数文件是 config/controller_<档>.yaml, 见设计文档 §6)。
+# 车体数据来源: docs/sim_car_spec.md §3/§4(外廓/轮距/速度包络), 设计依据见设计文档 §5。
+
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    # 注: controller_plugins 与 FollowPath 段不在这里 —— 它们在 config/controller_<档>.yaml,
+    # 由 launch 按 controller:=dwb|mppi 选一个作为后面的参数文件覆盖进来。
+
+    # 本车起步慢(diff_drive 的 max_wheel_acceleration 折算线加速度仅 ~0.1 m/s^2),
+    # 半径与时限都比 nav2 默认(0.5m/10s)放宽, 避免正常爬速被误判为卡死。
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.10
+      movement_time_allowance: 15.0
+
+    # 车小房间小, 比 nav2 默认(0.25/0.25)更严
+    general_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.10
+      yaw_goal_tolerance: 0.20
+
+planner_server:
+  ros__parameters:
+    use_sim_time: true
+    expected_planner_frequency: 20.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.25
+      use_astar: false
+      # 未知空间不致命: 地图墙内基本已探明, 留着更宽容(封死风险 > 抄近路风险)
+      allow_unknown: true
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: true
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: true
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: true
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    assisted_teleop:
+      plugin: "nav2_behaviors/AssistedTeleop"
+    global_frame: odom
+    robot_base_frame: base_footprint
+    transform_tolerance: 0.1
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 1.0
+    min_rotational_vel: 0.4
+    # 与本车角加速度能力(~0.76 rad/s^2)对齐
+    rotational_acc_lim: 0.8
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: true
+    global_frame: map
+    robot_base_frame: base_footprint
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    wait_for_service_timeout: 1000
+    # 逐条照抄 nav2_bringup 默认(缺一项就会在加载行为树时报 node type 未注册)
+    plugin_lib_names:
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_smooth_path_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_spin_action_bt_node
+      - nav2_wait_action_bt_node
+      - nav2_assisted_teleop_action_bt_node
+      - nav2_back_up_action_bt_node
+      - nav2_drive_on_heading_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_is_stuck_condition_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_globally_updated_goal_condition_bt_node
+      - nav2_is_path_valid_condition_bt_node
+      - nav2_initial_pose_received_condition_bt_node
+      - nav2_reinitialize_global_localization_service_bt_node
+      - nav2_rate_controller_bt_node
+      - nav2_distance_controller_bt_node
+      - nav2_speed_controller_bt_node
+      - nav2_truncate_path_action_bt_node
+      - nav2_truncate_path_local_action_bt_node
+      - nav2_goal_updater_node_bt_node
+      - nav2_recovery_node_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_round_robin_node_bt_node
+      - nav2_transform_available_condition_bt_node
+      - nav2_time_expired_condition_bt_node
+      - nav2_path_expiring_timer_condition
+      - nav2_distance_traveled_condition_bt_node
+      - nav2_single_trigger_bt_node
+      - nav2_goal_updated_controller_bt_node
+      - nav2_is_battery_low_condition_bt_node
+      - nav2_navigate_through_poses_action_bt_node
+      - nav2_navigate_to_pose_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node
+      - nav2_planner_selector_bt_node
+      - nav2_controller_selector_bt_node
+      - nav2_goal_checker_selector_bt_node
+      - nav2_controller_cancel_bt_node
+      - nav2_path_longer_on_approach_bt_node
+      - nav2_wait_cancel_bt_node
+      - nav2_spin_cancel_bt_node
+      - nav2_back_up_cancel_bt_node
+      - nav2_assisted_teleop_cancel_bt_node
+      - nav2_drive_on_heading_cancel_bt_node
+      - nav2_is_battery_charging_condition_bt_node
+
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: true
+    loop_rate: 20
+    stop_on_failure: false
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: true
+      waypoint_pause_duration: 200
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: true
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    # 上限与 DWB/MPPI 的速度包络一致(不在这里重新定义能力, 只做平滑与限幅)
+    max_velocity: [0.30, 0.0, 1.5]
+    # 反向只留给 recovery 的 backup 行为(局部控制器本身 min_vel_x=0 不倒车)
+    min_velocity: [-0.15, 0.0, -1.5]
+    max_accel: [0.2, 0.0, 0.8]
+    max_decel: [-0.2, 0.0, -0.8]
+    odom_topic: "odom"
+    odom_duration: 0.1
+    deadband_velocity: [0.02, 0.0, 0.05]
+    # 导航模式的停车兜底(重要): diff_drive 插件没有 cmd_vel_timeout, 指令停发会保持末次速度;
+    # 该节点是指令静默 0.5s 后发全零 Twist 的唯一兜底(与 translator 手动模式的 500ms watchdog 对称)。
+    # 边界: 只覆盖"上游不再发指令", 若本节点自身被杀则无兜底。
+    velocity_timeout: 0.5
+
+# 局部代价地图: odom 系滚动窗口, 只看雷达当下观测
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_footprint
+      rolling_window: true
+      # 整型(米): nav2 把 width/height 声明为 int, 写成 3.0 会因参数类型不符直接抛异常崩节点
+      width: 3
+      height: 3
+      resolution: 0.05
+      # 由 URDF 实测外廓推出: 车尾 -0.0833(后轮外缘) 车头 +0.0761(万向轮前缘) 半宽 0.081(轮外缘)。
+      # 必须写成字符串: nav2 把 footprint 声明为 string 参数, 嵌套列表不是合法参数类型。
+      footprint: "[[-0.085, -0.082], [-0.085, 0.082], [0.080, 0.082], [0.080, -0.082]]"
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        # 0.25 的核算: 门洞 0.8m - 两侧各 0.25 = 0.3m 净宽 > 车宽 0.165m, 仍可通过
+        inflation_radius: 0.25
+      always_send_full_costmap: true
+
+# 全局代价地图: map 系, 静态层 + 雷达观测 + 膨胀
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_footprint
+      resolution: 0.05
+      track_unknown_space: true
+      footprint: "[[-0.085, -0.082], [-0.085, 0.082], [0.080, 0.082], [0.080, -0.082]]"
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.25
+      always_send_full_costmap: true

@@ -2,7 +2,7 @@
 
 用法:
   export LIBGL_ALWAYS_SOFTWARE=1                   # WSL 软件渲染, 仓库约定手动 export
-  ros2 launch car_slam map_view.launch.py          # 默认加载 maps/my_map.yaml
+  ros2 launch car_slam map_view.launch.py          # 默认加载 maps/local_map.yaml
   ros2 launch car_slam map_view.launch.py map:=/path/to/other.yaml
 
 说明:
@@ -22,7 +22,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     slam_share = get_package_share_directory('car_slam')
-    default_map = os.path.join(slam_share, 'maps', 'my_map.yaml')
+    default_map = os.path.join(slam_share, 'maps', 'local_map.yaml')
     default_rviz = os.path.join(slam_share, 'rviz', 'map_view.rviz')
 
     declare_map = DeclareLaunchArgument('map', default_value=default_map)

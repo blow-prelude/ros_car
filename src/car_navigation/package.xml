@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>car_navigation</name>
+  <version>0.0.1</version>
+  <description>导航启动包: 离线栅格图上 AMCL 定位 + Nav2 规划/控制(控制器 DWB|MPPI 可切换) + 导航专用 RViz, 场景与机器人/定位复用 car_bringup</description>
+  <maintainer email="b24051005@njupt.edu.cn">wtr</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>car_bringup</exec_depend>
+  <!-- 地图产物 car_slam/maps/local_map.yaml 是 map 参数默认值来源: 数据依赖(建图层产物), 非代码依赖 -->
+  <exec_depend>car_slam</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_smoother</exec_depend>
+  <exec_depend>nav2_behaviors</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_waypoint_follower</exec_depend>
+  <exec_depend>nav2_velocity_smoother</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_navfn_planner</exec_depend>
+  <exec_depend>nav2_dwb_controller</exec_depend>
+  <exec_depend>nav2_mppi_controller</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <!-- scripts/nav_waypoints.py 航点回归 -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>nav2_simple_commander</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

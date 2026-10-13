@@ -1,0 +1,60 @@
+# 局部控制器档 DWB(默认): 采样式局部规划器, nav2 官方默认控制器, 生态与调参资料最多。
+# 本文件与 config/nav2_navigation.yaml 一起作为 controller_server 的参数文件(后者在前, 本文件在后
+# 覆盖同名键); 换档只需换文件, 见 docs/devel/2026-10-13-design-navigation-stack.md §6。
+# 速度包络依据 docs/sim_car_spec.md §4(v<=0.35 m/s, w<=2.0 rad/s)留 15% 余量。
+
+controller_server:
+  ros__parameters:
+    controller_plugins: ["FollowPath"]
+
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+      # 排障时可置 true: 打印每条轨迹的 critic 打分明细(刷屏, 平时关)
+      debug_trajectory_details: false
+
+      # ---- 速度采样空间: 非全向(vy 恒 0) ----
+      min_vel_x: 0.0
+      min_vel_y: 0.0
+      max_vel_x: 0.30
+      max_vel_y: 0.0
+      max_vel_theta: 1.5
+      min_speed_xy: 0.0
+      max_speed_xy: 0.30
+      min_speed_theta: 0.0
+
+      # ---- 加速度限制: 对齐 diff_drive 的 max_wheel_acceleration=3.0 rad/s^2 ----
+      # 折算线加速度 ~0.0975 m/s^2(3.0*0.0325)、角加速度 ~0.76 rad/s^2(3.0*0.0325/0.128)。
+      # 取值略高于底盘能力, 让瓶颈留在物理侧(见设计文档 §7.3)。
+      acc_lim_x: 0.2
+      acc_lim_y: 0.0
+      acc_lim_theta: 0.8
+      decel_lim_x: -0.2
+      decel_lim_y: 0.0
+      decel_lim_theta: -0.8
+
+      # ---- 采样与仿真时长 ----
+      vx_samples: 20
+      vy_samples: 1
+      vtheta_samples: 40
+      sim_time: 1.7
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      transform_tolerance: 0.2
+      xy_goal_tolerance: 0.10
+      trans_stopped_velocity: 0.05
+      short_circuit_trajectory_evaluation: true
+      stateful: true
+
+      # ---- critic 组合与权重: nav2 官方默认, 未实测前不改 ----
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
+                "PathAlign", "PathDist", "GoalDist"]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 32.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 24.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 32.0
+      GoalDist.scale: 24.0
+      RotateToGoal.scale: 32.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0

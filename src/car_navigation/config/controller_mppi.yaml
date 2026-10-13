@@ -1,0 +1,96 @@
+# 局部控制器档 MPPI: 采样式最优控制(模型预测路径积分), 避障与轨迹平滑性好, 参数多调参成本高。
+# 用法: ros2 launch car_navigation navigation.launch.py controller:=mppi
+# 结构与 controller_dwb.yaml 一致(同为 controller_server 的第二参数文件), 见设计文档 §6。
+# 参数取 nav2 官方 DiffDrive 模板值; 未实测前不动权重, 首跑后用 RViz 的 /trajectories 看采样再调。
+
+controller_server:
+  ros__parameters:
+    controller_plugins: ["FollowPath"]
+
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+
+      # ---- 采样规模与仿真步长(CPU 开销 = batch_size * time_steps, 本机够用) ----
+      time_steps: 56
+      model_dt: 0.05
+      batch_size: 2000
+      iteration_count: 1
+      regenerate_noises: false
+      prune_distance: 1.7
+
+      # ---- 速度包络与噪声: 与 DWB 档、velocity_smoother 一致, 非全向(vy 不采样) ----
+      vx_max: 0.30
+      vx_min: -0.15
+      vy_max: 0.0
+      wz_max: 1.5
+      vx_std: 0.2
+      vy_std: 0.2
+      wz_std: 0.4
+
+      motion_model: "DiffDrive"
+      temperature: 0.3
+      gamma: 0.015
+      transform_tolerance: 0.2
+
+      # ---- 可视化: 发布 /trajectories(MarkerArray), 导航 RViz 已配好该显示项 ----
+      visualize: true
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+      AckermannConstraints:
+        min_turning_r: 0.2
+
+      # ---- critic 组合与权重: nav2 官方 DiffDrive 模板 ----
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic",
+                "PathAlignCritic", "PathFollowCritic", "PathAngleCritic",
+                "PreferForwardCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        critical_cost: 300.0
+        consider_footprint: true
+        collision_cost: 1000000.0
+        near_goal_distance: 1.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.4
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.0
+        mode: 0
