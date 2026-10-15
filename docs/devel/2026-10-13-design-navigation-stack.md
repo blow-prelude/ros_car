@@ -233,6 +233,12 @@ gzserver 加载世界 + `spawn_entity.py` 完成前，`/clock` 未发布、`odom
 
 前置：`ros2 launch car_navigation navigation.launch.py gui:=false nav_rviz:=false`（无头）。
 
+> **2026-10-15 前置修正**：本表首次实测时发现"跑几个航点后地图/定位漂移"根因在定位层——
+> 旧 `ekf.yaml` 按协方差权重把 ~91% 信任给了打滑的轮速绝对 yaw，`odom->base_footprint`
+> 偏航误差随累计旋转涨到 1.5 rad，AMCL 被迫用 `map->odom` 硬拉、局部代价地图被错误偏航
+> 涂抹出幻影墙。已改 `ekf.yaml`（轮速只融 vx/vyaw，航向交 IMU，实测 EKF 偏航误差
+> ≤0.18 rad、典型 0.03），详见 `docs/FAQS/nav-localization-drift.md`。
+
 | # | 项目 | 指令 | 实测 | 结论 |
 |---|---|---|---|---|
 | 1 | 生命周期就绪 | `ros2 lifecycle get /amcl`、`/controller_server`、`/bt_navigator` | 待填 | 待填 |
@@ -240,7 +246,7 @@ gzserver 加载世界 + `spawn_entity.py` 完成前，`/clock` 未发布、`odom
 | 3 | 初始定位 | `ros2 run tf2_ros tf2_echo map base_footprint`（起步时） | 待填 | 待填 |
 | 4 | 代价地图 | `ros2 topic hz /global_costmap/costmap`，RViz 看膨胀不封死门洞 | 待填 | 待填 |
 | 5 | 单点导航 | `ros2 action send_goal /navigate_to_pose ...`（目标 (4.0,2.0) 门洞） | 待填 | 待填 |
-| 6 | 航点回归 | `ros2 run car_navigation nav_waypoints` | 待填 | 待填 |
+| 6 | 航点回归 | `ros2 run car_navigation nav_waypoints`（2026-10-15 无头 `--loop 2`） | leg1-4 双向通过（客厅→门洞→厨房→回门洞，12.5~40.1s/段）；leg5/6 `table_ne`/`bedroom_door` 失败：0.25~0.35m 窄缝对 `inflation_radius 0.25` 的几何问题，planner 对 (5.8,3.2) 直接报 no valid path，与定位无关（同行定位误差 <0.05m） | 链路通；窄缝目标/膨胀参数另案调 |
 | 7 | 控制器切换 | 同目标 `controller:=mppi` 重跑 | 待填 | 待填 |
 | 8 | 停车兜底 | 导航中 `pkill -x controller_server`（**勿用 `pkill -f`**） | 待填 | 待填 |
 

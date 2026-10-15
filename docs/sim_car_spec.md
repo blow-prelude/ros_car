@@ -76,7 +76,7 @@ TF 树：odom → base_footprint → base_link → {wheel_left/right_link, caste
 6. **IMU ω_y 存在 ~0.06 rad/s 常量伪速率**（该 gazebo 构建+铰接体+速度伺服的极限环残余，振幅极小不影响姿态/雷达/加速度）：EKF 配置只采 IMU 的 z 轴 yaw/yaw-rate（地面机器人标准做法）即可完全规避。
 7. spawn 建议 `-z 0.01` 让车自然落地；**轮网格左右配对由旋转矩阵推导**（x_ros=+x_m ⇒ x_m≥0 半块在 +y 左侧），转向方向由关节 y 坐标+插件 left/right 指定决定，与网格无关。
 8. 修改 URDF 后务必 `colcon build`——`$(find pkg)` 解析到 install/ 里的旧拷贝，不重建等于没改。
-9. v2 模型 2.0kg 底盘：原地旋转里程计偏大 ~15%（轮子打滑，编码器积分特性），EKF 融合 IMU yaw 率后可校正；直线与停车行为与 v1 一致。
+9. v2 模型 2.0kg 底盘：原地旋转里程计偏大 ~15%（轮子打滑，编码器积分特性），直线与停车行为与 v1 一致。**EKF 并非"融合了 IMU 就能校正"**（2026-10-15 实测纠正）：旧配置同时融合轮速绝对 yaw 时，`covariance_yaw`(0.001) 与 IMU `orientation_covariance`(0.01) 的权重比把 ~91% 信任给了更不准的轮速，导航累计旋转 ~64 rad 后 odom 偏航误差仍涨到 1.5 rad；必须让轮速只融合 vx/vyaw、航向交给 IMU（见 `car_localization/config/ekf.yaml` 与 `FAQS/nav-localization-drift.md`）。
 
 ## 7. 最终验收结果（空场，无头 gzserver）
 

@@ -19,33 +19,41 @@ ekf_filter_node:
     base_link_frame: base_footprint
     world_frame: odom        # 连续估计器：odom->base_footprint
 
-    # ---- 轮速里程计：位置 x/y/yaw + 速度 vx/vyaw ----
+    # ---- 轮速里程计：只融合速度(vx, vyaw)，不融合绝对 x/y/yaw ----
+    # 2026-10-15 航点回归 + gz 真值对账的实测教训：打滑使轮速航向持续偏(原地 ~15%，
+    # 混合行驶 ~2.5%/rad)，而 diff_drive 插件的 covariance_yaw(0.001) 比 IMU 的
+    # orientation_covariance(0.01) 小一个量级，Kalman 权重 ~91% 给了轮速——
+    # 航点回归累计 ~64 rad 旋转后 odom->base 偏航误差涨到 1.5 rad。局部代价地图
+    # 在 odom 系里按这个错误偏航插雷达点，涂抹出幻影墙把门洞封死，controller
+    # 连刷 "Failed to make progress"，航点后半段全挂；AMCL 只能不断用 map->odom
+    # 反向硬拉(累计 -1.4 rad)，RViz 里表现就是地图/定位来回漂移。
+    # 轮速里程计的可信量是"走了多远、转得多快"，航向交给 IMU(仿真陀螺噪声 2e-4，
+    # 互补滤波输出与真值偏差 <0.04 rad，实测远优于轮速)。
     odom0: /odom
-    #        x      y      z      roll   pitch  yaw    vx     vy     vz
-    odom0_config: [true,  true,  false,
-                   false, false, true,
+    #        x      y      z     roll   pitch  yaw    vx     vy     vz
+    odom0_config: [false, false, false,
+                   false, false, false,
                    true,  false, false,
-    #        vroll  vpitch vyaw   ax     ay     az
+    #        vroll  vpitch vyaw  ax     ay     az
                    false, false, true,
                    false, false, false]
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 10
 
-    # ---- 滤波 IMU：yaw（陀螺积分）+ vyaw + 前向加速度 ax/ay ----
+    # ---- 滤波 IMU：yaw(陀螺积分) + vyaw ----
     # roll/pitch 不喂（two_d_mode 会清零）；yaw 与 vyaw 同源但为官方模板推荐组合
+    # ax/ay 不融合：r_l 按 IMU 姿态去重力，互补滤波的俯仰残差(~1°)会漏出
+    # g*sin(δ)≈0.15 m/s² 的假加速度——比本车最大线加速度(~0.2)还大，纯添噪声；
+    # 里程位置由上面的轮速 vx 积分即可，不需要加速度通道。
     imu0: /imu/data_filtered
-    #        x      y      z      roll   pitch  yaw    vx     vy     vz
+    #        x      y      z     roll   pitch  yaw    vx     vy     vz
     imu0_config: [false, false, false,
                   false, false, true,
                   false, false, false,
-    #        vroll  vpitch vyaw   ax     ay     az
+    #        vroll  vpitch vyaw  ax     ay     az
                   false, false, true,
-                  true,  true,  false]
-    imu0_differential: false
-    imu0_relative: true      # 以首帧为基准（陀螺积分本就是相对航向）
-    imu0_queue_size: 10
-    imu0_remove_gravitational_acceleration: true
+                  false, false, false]
 
     # process_noise_covariance / initial_estimate_covariance 不设,
     # 用 robot_localization 内置默认（15x15 全矩阵, 官方模板值）;
